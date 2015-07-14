@@ -1,23 +1,29 @@
 #!/usr/bin/env node
 
-var child_process = require('child_process'),
+'use strict';
+
+var pkg = require('../package.json'),
   updateNotifier = require('update-notifier'),
-  colors = require('colors'),
-  package = require('../package.json'),
   recipes = require('../lib/recipes'),
-  setup = require('../lib/setup');
+  setup = require('../lib/setup'),
+  utils = require('../lib/utils'),
+  kitchen = require('../lib/kitchen'),
+  compat = require('appc-compat');
 
 var args = process.argv.slice(2);
-var args_ln = args.length;
 
-if (args[0] !== '-h' && args[0] !== '--help' && args[0] !== 'help') {
-  var cmd = args.shift();
+// help
+var cmd = args.shift();
 
-  // version
-  if (cmd === '-v' || cmd === '--version' || args[0] === 'version') {
-    console.log(package.version);
-    return;
-  }
+if (cmd === '-h' || cmd === '--help' || cmd === 'help') {
+  displayHelp();
+}
+
+// version
+else if (cmd === '-v' || cmd === '--version' || cmd === 'version') {
+  console.log(pkg.version);
+
+} else {
 
   var target;
 
@@ -62,81 +68,99 @@ if (args[0] !== '-h' && args[0] !== '--help' && args[0] !== 'help') {
     recipes.remove(args[0], target);
   }
 
+  // uninstall
+  else if (cmd === 'uninstall') {
+    displayBanner();
+
+    setup.uninstall();
+  }
+
   // reset
   else if (cmd === 'reset') {
     displayBanner();
 
     recipes.reset(target);
   }
-  // install
-  else if (cmd === 'install') {
-    displayBanner(false);
 
-    setup.install();
+  // generate
+  else if (cmd === 'generate') {
+    displayBanner();
+
+    setup.generate();
   }
 
-  // uninstall
-  else if (cmd === 'uninstall') {
-    displayBanner(false);
-
-    setup.uninstall();
-  }
-
-  // alias for 'ti build'
+  // unknown
   else {
 
-    // prepend build
-    args.unshift('build');
+    // deprecated
+    if (cmd !== 'run' && cmd !== 'build' && cmd !== 'r' && cmd !== 'b') {
+      args.unshift(cmd);
 
-    // execute ti
-    child_process.spawn('ti', args, {
+    } else {
+      console.warn('DEPRECATED: '.red.bold + ' Use ' + 'tn'.yellow + ' instead of ' + ('tn ' + cmd).yellow + '\n');
+    }
 
-      // So that Ti CLI can setRawMode
-      stdio: 'inherit'
-    });
+    var tray = kitchen.cook(args);
+
+    args = tray ? tray.dinner : args;
+
+    // Show what TiNy made (only for build and create, not to mess with JSON output)
+    console.log('TiNy'.cyan.bold + ' cooked: ' + ('[appc] ti ' + utils.join(args)).yellow + '\n');
+
+    var eat = function () {
+      compat.ti(args, {
+        stdio: 'inherit'
+      });
+    }
+
+    // verbose prompt
+    if (tray && tray.recipe) {
+      kitchen.confirm(tray, eat);
+    } else {
+      eat();
+    }
   }
 }
 
 // help
-else {
+function displayHelp() {
 
   displayBanner();
 
   console.log('Commands:');
   console.log();
-  console.log('  *'.cyan + '\t\t\t\t' + 'executes `ti build *` to save you 6 more keystrokes!');
+  console.log('  *'.cyan + '\t\t\t' + 'cook recipes for ' + '[appc] ti build'.yellow + '.');
   console.log();
-  console.log('  list, recipes'.cyan + '\t\t\t' + 'lists all recipes in the book');
+  console.log('  list, recipes'.cyan + '\t\t\t' + 'lists all recipes in the book.');
   console.log();
-  console.log('  default *'.cyan + '\t\t\t' + 'sets a recipe (name) to always start out with (default: ios)');
+  console.log('  Add ' + 'project'.yellow + ' before the next commands to use ' + 'tn.json'.yellow + ' in current dir.');
   console.log();
   console.log('  [project] save <name> *'.cyan + '\t' + 'save a recipe, possibly overriding a built-in.');
   console.log('  [project] rename <old> <new>'.cyan + '\t' + 'renames a recipe.');
   console.log('  [project] remove <name>'.cyan + '\t' + 'removes a recipe, possibly restoring an overridden built-in');
-  console.log('  [project] reset'.cyan + '\t\t' + 'removes all custom recipes and default, restoring the built-in');
-  console.log('  \t\t\t\tAdd \'project\' before these commands to use tn.json in current dir.');
+  console.log('  [project] reset'.cyan + '\t\t' + 'removes all custom recipes, restoring the built-in');
   console.log();
-  console.log('  install'.cyan + '\t\t\t' + 'installs the Titanium CLI hook');
-  console.log('  uninstall'.cyan + '\t\t\t' + 'uninstalls the Titanium CLI hook');
+  console.log('  generate'.cyan + '\t\t\t' + 'generates simulators/device user-recipes (' + 'tn iphone6plus'.yellow + ')');
+  console.log();
+  console.log('  uninstall'.cyan + '\t\t\t' + 'uninstalls the old 2.x Titanium CLI hook');
   console.log();
   console.log('  -h, --help, help'.cyan + '\t\t' + 'displays help');
   console.log('  -v, --version, version'.cyan + '\t' + 'displays the current version');
+  console.log('  --verbose'.cyan + '\t\t\t' + 'shows what\'s cooking and confirm or save the recipe');
   console.log();
 }
 
-function displayBanner(update) {
+function displayBanner(doUpdate) {
 
-  if (update !== false) {
-    var notifier = updateNotifier({
-      packagePath: '../package.json'
+  if (doUpdate !== false) {
+    updateNotifier({
+      packageName: pkg.name,
+      packageVersion: pkg.version
     });
-
-    // check for updates
-    notifier.update && notifier.notify();
   }
 
   // display banner
-  console.log('TiNy'.cyan.bold + ', version ' + package.version);
-  console.log(package.about.copyright);
+  console.log('TiNy'.cyan.bold + ', version ' + pkg.version);
+  console.log('Copyright (c) 2013-2015, Fokke Zandbergen.  All Rights Reserved.');
   console.log();
 }
